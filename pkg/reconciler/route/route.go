@@ -137,10 +137,19 @@ func (c *Reconciler) ReconcileKind(ctx context.Context, r *v1.Route) pkgreconcil
 		return err
 	}
 
-	tls, acmeChallenges, err := c.tls(ctx, r.Status.URL.Host, r, traffic)
+	tls, acmeChallenges, err := c.publicTLS(ctx, r.Status.URL.Host, r, traffic)
 	if err != nil {
 		return err
 	}
+
+	if config.FromContext(ctx).Network.InternalEncryption {
+		internalTLS, err := c.internalTLS(ctx, r.Status.URL.Host, r, traffic)
+		if err != nil {
+			return err
+		}
+		tls = append(tls, internalTLS...)
+	}
+
 	// Reconcile ingress and its children resources.
 	ingress, effectiveRO, err := c.reconcileIngress(ctx, r, traffic, tls, ingressClassForRoute(ctx, r), acmeChallenges...)
 	if err != nil {
@@ -180,7 +189,7 @@ func (c *Reconciler) ReconcileKind(ctx context.Context, r *v1.Route) pkgreconcil
 	return nil
 }
 
-func (c *Reconciler) tls(ctx context.Context, host string, r *v1.Route, traffic *traffic.Config) ([]netv1alpha1.IngressTLS, []netv1alpha1.HTTP01Challenge, error) {
+func (c *Reconciler) publicTLS(ctx context.Context, host string, r *v1.Route, traffic *traffic.Config) ([]netv1alpha1.IngressTLS, []netv1alpha1.HTTP01Challenge, error) {
 	tls := []netv1alpha1.IngressTLS{}
 	if !autoTLSEnabled(ctx, r) {
 		r.Status.MarkTLSNotEnabled(v1.AutoTLSNotEnabledMessage)
@@ -193,8 +202,8 @@ func (c *Reconciler) tls(ctx context.Context, host string, r *v1.Route, traffic 
 	}
 
 	for domain := range domainToTagMap {
+		// Ignore cluster local domains here, as their TLS is handled in internalTLS()
 		if domains.IsClusterLocal(domain) {
-			r.Status.MarkTLSNotEnabled(v1.TLSNotEnabledForClusterLocalMessage)
 			delete(domainToTagMap, domain)
 		}
 	}
@@ -301,6 +310,11 @@ func (c *Reconciler) getOrphanRouteCerts(r *v1.Route, domainToTagMap map[string]
 
 	var unusedCerts []*netv1alpha1.Certificate
 	for _, cert := range certs {
+		// TODO: find a better way to filter out local certificates
+		// Do not cleanup cluster local certificates
+		if cert.Labels[networking.VisibilityLabelKey] == serving.VisibilityClusterLocal {
+			continue
+		}
 		var shouldKeepCert bool
 		for _, dn := range cert.Spec.DNSNames {
 			if _, used := domainToTagMap[dn]; used {
@@ -314,6 +328,40 @@ func (c *Reconciler) getOrphanRouteCerts(r *v1.Route, domainToTagMap map[string]
 	}
 
 	return unusedCerts, nil
+}
+
+func (c *Reconciler) internalTLS(ctx context.Context, host string, r *v1.Route, tc *traffic.Config) ([]netv1alpha1.IngressTLS, error) {
+	tls := []netv1alpha1.IngressTLS{}
+
+	// TODO: partially copied from ingress.go, maybe we can refactor this?
+	for name := range tc.Targets {
+		domains, err := resources.RouteDomain(ctx, name, r, netv1alpha1.IngressVisibilityClusterLocal)
+		if err != nil {
+			return nil, err
+		}
+
+		desiredCert := resources.MakeInternalCertificate(r, domains, certClass(ctx, r))
+		cert, err := networkaccessor.ReconcileCertificate(ctx, r, desiredCert, c)
+		if err != nil {
+			if kaccessor.IsNotOwned(err) {
+				r.Status.MarkCertificateNotOwned(desiredCert.Name)
+			} else {
+				r.Status.MarkCertificateProvisionFailed(desiredCert.Name)
+			}
+			return nil, err
+		}
+
+		// TODO: do cleanup like on publicTLS getOrphanRouteCerts
+
+		if cert.IsReady() {
+			r.Status.MarkCertificateReady(cert.Name)
+			tls = append(tls, resources.MakeIngressTLS(cert, domains.List()))
+		} else {
+			r.Status.MarkCertificateNotReady(cert.Name)
+		}
+	}
+
+	return tls, nil
 }
 
 // configureTraffic attempts to configure traffic based on the RouteSpec.  If there are missing

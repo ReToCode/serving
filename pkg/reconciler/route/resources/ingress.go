@@ -144,7 +144,7 @@ func makeIngressSpec(
 			visibilities = append(visibilities, netv1alpha1.IngressVisibilityExternalIP)
 		}
 		for _, visibility := range visibilities {
-			domains, err := routeDomain(ctx, name, r, visibility)
+			domains, err := RouteDomain(ctx, name, r, visibility)
 			if err != nil {
 				return netv1alpha1.IngressSpec{}, err
 			}
@@ -205,7 +205,8 @@ func makeIngressSpec(
 	}, nil
 }
 
-func routeDomain(ctx context.Context, targetName string, r *servingv1.Route, visibility netv1alpha1.IngressVisibility) (sets.String, error) {
+// TODO: maybe find a better approach instead of making this public
+func RouteDomain(ctx context.Context, targetName string, r *servingv1.Route, visibility netv1alpha1.IngressVisibility) (sets.String, error) {
 	hostname, err := domains.HostnameFromTemplate(ctx, r.Name, targetName)
 	if err != nil {
 		return nil, err

@@ -192,13 +192,8 @@ func (rs *RouteStatus) MarkCertificateNotOwned(name string) {
 const (
 	// AutoTLSNotEnabledMessage is the message which is set on the
 	// RouteConditionCertificateProvisioned condition when it is set to True
-	// because AutoTLS was not enabled.
-	AutoTLSNotEnabledMessage = "autoTLS is not enabled"
-
-	// TLSNotEnabledForClusterLocalMessage is the message which is set on the
-	// RouteConditionCertificateProvisioned condition when it is set to True
-	// because the domain is cluster-local.
-	TLSNotEnabledForClusterLocalMessage = "TLS is not enabled for cluster-local"
+	// because auto-tls was not enabled.
+	AutoTLSNotEnabledMessage = "auto-tls is not enabled"
 )
 
 // MarkTLSNotEnabled sets RouteConditionCertificateProvisioned to true when
