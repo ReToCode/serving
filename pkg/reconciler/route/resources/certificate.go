@@ -97,7 +97,7 @@ func MakeInternalCertificate(route *v1.Route, domains sets.String, certClass str
 	}
 	domainsOrdered.Sort()
 
-	certName := names.Certificate(route) + "-internal"
+	certName := route.Namespace + "-serving-certs-" + "internal"
 
 	return &networkingv1alpha1.Certificate{
 		ObjectMeta: metav1.ObjectMeta{

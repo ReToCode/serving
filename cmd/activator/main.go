@@ -31,6 +31,10 @@ import (
 
 	"github.com/kelseyhightower/envconfig"
 	"go.uber.org/zap"
+	"knative.dev/control-protocol/pkg/certificates"
+	filteredFactory "knative.dev/pkg/client/injection/kube/informers/factory/filtered"
+	"knative.dev/serving/pkg/activator/certificate"
+	"knative.dev/serving/pkg/networking"
 
 	// Injection related imports.
 	kubeclient "knative.dev/pkg/client/injection/kube/client"
@@ -41,8 +45,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	"knative.dev/control-protocol/pkg/certificates"
 	network "knative.dev/networking/pkg"
+	networkingapis "knative.dev/networking/pkg/apis/networking"
 	netcfg "knative.dev/networking/pkg/config"
 	netprobe "knative.dev/networking/pkg/http/probe"
 	"knative.dev/pkg/configmap"
@@ -67,7 +71,6 @@ import (
 	asmetrics "knative.dev/serving/pkg/autoscaler/metrics"
 	pkghttp "knative.dev/serving/pkg/http"
 	"knative.dev/serving/pkg/logging"
-	"knative.dev/serving/pkg/networking"
 )
 
 const (
@@ -91,6 +94,8 @@ func main() {
 	// Set up a context that we can cancel to tell informers and other subprocesses to stop.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	ctx = filteredFactory.WithSelectors(ctx, networkingapis.CertificateUIDLabelKey)
 
 	// Report stats on Go memory usage every 30 seconds.
 	metrics.MemStatsOrDie(ctx)
@@ -165,6 +170,8 @@ func main() {
 	// Enable TLS client when queue-proxy-ca is specified.
 	// At this moment activator with TLS does not disable HTTP.
 	// See also https://github.com/knative/serving/issues/12808.
+
+	// TODO: fix this when QP is hosting the correct certs
 	if tlsEnabled {
 		logger.Info("Internal Encryption is enabled")
 		caSecret, err := kubeClient.CoreV1().Secrets(system.Namespace()).Get(ctx, netcfg.ServingInternalCertName, metav1.GetOptions{})
@@ -300,20 +307,16 @@ func main() {
 	// At this moment activator with TLS does not disable HTTP.
 	// See also https://github.com/knative/serving/issues/12808.
 	if tlsEnabled {
-		secret, err := kubeClient.CoreV1().Secrets(system.Namespace()).Get(ctx, netcfg.ServingInternalCertName, metav1.GetOptions{})
-		if err != nil {
-			logger.Fatalw("failed to get secret", zap.Error(err))
-		}
-		cert, err := tls.X509KeyPair(secret.Data[certificates.CertName], secret.Data[certificates.PrivateKeyName])
-		if err != nil {
-			logger.Fatalw("failed to load certs", zap.Error(err))
-		}
+		certResolver := certificate.NewCertResolver(ctx)
 
 		// TODO: Implement the secret (certificate) rotation like knative.dev/pkg/webhook/certificates/.
 		// Also, the current activator must be restarted when updating the secret.
 		name, server := "https", pkgnet.NewServer(":"+strconv.Itoa(networking.BackendHTTPSPort), ah)
 		go func(name string, s *http.Server) {
-			s.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+			s.TLSConfig = &tls.Config{
+				GetCertificate: certResolver.GetCertificate,
+				MinVersion:     tls.VersionTLS12,
+			}
 			// Don't forward ErrServerClosed as that indicates we're already shutting down.
 			if err := s.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				errCh <- fmt.Errorf("%s server failed: %w", name, err)

@@ -143,7 +143,7 @@ func (c *Reconciler) ReconcileKind(ctx context.Context, r *v1.Route) pkgreconcil
 	}
 
 	if config.FromContext(ctx).Network.InternalEncryption {
-		internalTLS, err := c.internalTLS(ctx, r.Status.URL.Host, r, traffic)
+		internalTLS, err := c.internalTLS(ctx, r, traffic)
 		if err != nil {
 			return err
 		}
@@ -330,17 +330,16 @@ func (c *Reconciler) getOrphanRouteCerts(r *v1.Route, domainToTagMap map[string]
 	return unusedCerts, nil
 }
 
-func (c *Reconciler) internalTLS(ctx context.Context, host string, r *v1.Route, tc *traffic.Config) ([]netv1alpha1.IngressTLS, error) {
+func (c *Reconciler) internalTLS(ctx context.Context, r *v1.Route, tc *traffic.Config) ([]netv1alpha1.IngressTLS, error) {
 	tls := []netv1alpha1.IngressTLS{}
 
-	// TODO: partially copied from ingress.go, maybe we can refactor this?
 	for name := range tc.Targets {
-		domains, err := resources.RouteDomain(ctx, name, r, netv1alpha1.IngressVisibilityClusterLocal)
+		internalDomains, err := resources.RouteDomain(ctx, name, r, netv1alpha1.IngressVisibilityClusterLocal)
 		if err != nil {
 			return nil, err
 		}
 
-		desiredCert := resources.MakeInternalCertificate(r, domains, certClass(ctx, r))
+		desiredCert := resources.MakeInternalCertificate(r, internalDomains, certClass(ctx, r))
 		cert, err := networkaccessor.ReconcileCertificate(ctx, r, desiredCert, c)
 		if err != nil {
 			if kaccessor.IsNotOwned(err) {
@@ -355,7 +354,7 @@ func (c *Reconciler) internalTLS(ctx context.Context, host string, r *v1.Route, 
 
 		if cert.IsReady() {
 			r.Status.MarkCertificateReady(cert.Name)
-			tls = append(tls, resources.MakeIngressTLS(cert, domains.List()))
+			tls = append(tls, resources.MakeIngressTLS(cert, internalDomains.List()))
 		} else {
 			r.Status.MarkCertificateNotReady(cert.Name)
 		}

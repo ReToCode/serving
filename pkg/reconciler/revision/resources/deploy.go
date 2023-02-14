@@ -202,7 +202,7 @@ func makePodSpec(rev *v1.Revision, cfg *config.Config) (*corev1.PodSpec, error) 
 
 	if cfg.Network.InternalEncryption {
 		queueContainer.VolumeMounts = append(queueContainer.VolumeMounts, varCertVolumeMount)
-		extraVolumes = append(extraVolumes, certVolume(rev.Namespace+"-"+networking.ServingCertName))
+		extraVolumes = append(extraVolumes, certVolume(rev.Namespace+"-"+networking.ServingCertName+"-internal"))
 	}
 
 	podSpec := BuildPodSpec(rev, append(BuildUserContainers(rev), *queueContainer), cfg)
