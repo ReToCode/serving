@@ -22,8 +22,10 @@ func NewController(
 	// Starting from 4.10 (1.24.0) we can use the new API version (autoscaling/v2) of HorizontalPodAutoscaler
 	// As we also need to support 4.8 we also need provide the controller using the old API version (autoscaling/v2beta2)
 	if err := CheckMinimumVersion(kc.Discovery(), "1.24.0"); err == nil {
+		fmt.Println("Running hpa.NewContoller")
 		return hpa.NewController(ctx, cmw)
 	} else {
+		fmt.Println("Running hpav2beta2.NewContoller")
 		return hpav2beta2.NewController(ctx, cmw)
 	}
 }

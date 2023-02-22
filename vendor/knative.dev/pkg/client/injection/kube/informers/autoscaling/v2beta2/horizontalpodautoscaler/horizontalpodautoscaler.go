@@ -20,6 +20,7 @@ package horizontalpodautoscaler
 
 import (
 	context "context"
+	"fmt"
 
 	apiautoscalingv2beta2 "k8s.io/api/autoscaling/v2beta2"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,27 +37,25 @@ import (
 )
 
 func init() {
+	fmt.Println("Running init on v2beta2")
 	injection.Default.RegisterInformer(withInformer)
 	injection.Dynamic.RegisterDynamicInformer(withDynamicInformer)
 }
 
-// Key is used for associating the Informer inside the context.Context.
-type Key struct{}
-
 func withInformer(ctx context.Context) (context.Context, controller.Informer) {
 	f := factory.Get(ctx)
 	inf := f.Autoscaling().V2beta2().HorizontalPodAutoscalers()
-	return context.WithValue(ctx, Key{}, inf), inf.Informer()
+	return context.WithValue(ctx, injection.HPAV2Beta2Key{}, inf), inf.Informer()
 }
 
 func withDynamicInformer(ctx context.Context) context.Context {
 	inf := &wrapper{client: client.Get(ctx), resourceVersion: injection.GetResourceVersion(ctx)}
-	return context.WithValue(ctx, Key{}, inf)
+	return context.WithValue(ctx, injection.HPAV2Beta2Key{}, inf)
 }
 
 // Get extracts the typed informer from the context.
 func Get(ctx context.Context) v2beta2.HorizontalPodAutoscalerInformer {
-	untyped := ctx.Value(Key{})
+	untyped := ctx.Value(injection.HPAV2Beta2Key{})
 	if untyped == nil {
 		logging.FromContext(ctx).Panic(
 			"Unable to fetch k8s.io/client-go/informers/autoscaling/v2beta2.HorizontalPodAutoscalerInformer from context.")
