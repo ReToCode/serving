@@ -18,10 +18,17 @@ package injection
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
+	"github.com/blang/semver/v4"
+	"k8s.io/client-go/discovery"
+	v2 "k8s.io/client-go/informers/autoscaling/v2"
+	"k8s.io/client-go/informers/autoscaling/v2beta2"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-
 	"knative.dev/pkg/controller"
+	"knative.dev/serving/pkg/reconciler/autoscaling/hpakey"
 )
 
 // InformerInjector holds the type of a callback that attaches a particular
@@ -116,6 +123,12 @@ func (i *impl) SetupInformers(ctx context.Context, cfg *rest.Config) (context.Co
 		ctx = duck(ctx)
 	}
 
+	kc := kubernetes.NewForConfigOrDie(cfg)
+	useHPAV2 := false
+	if err := checkMinimumVersion(kc.Discovery(), "1.24.0"); err == nil {
+		useHPAV2 = true
+	}
+
 	// Based on the reconcilers we have linked, build up a set of informers
 	// and inject them onto the context.
 	var inf controller.Informer
@@ -123,6 +136,24 @@ func (i *impl) SetupInformers(ctx context.Context, cfg *rest.Config) (context.Co
 	informers := make([]controller.Informer, 0, len(i.GetInformers()))
 	for _, ii := range i.GetInformers() {
 		ctx, inf = ii(ctx)
+
+		// We put the hpa informers on the context with a known key,
+		// so we can avoid having both informers started.
+		// The informer will still be on the context, but will not be run by the
+		// calling function.
+		hpaInf := ctx.Value(hpakey.IdentifiableKey{})
+		if v2beta2Inf, ok := hpaInf.(v2beta2.HorizontalPodAutoscalerInformer); ok {
+			if useHPAV2 && v2beta2Inf.Informer() == inf {
+				continue
+			}
+		}
+
+		if v2Inf, ok := hpaInf.(v2.HorizontalPodAutoscalerInformer); ok {
+			if !useHPAV2 && v2Inf.Informer() == inf {
+				continue
+			}
+		}
+
 		informers = append(informers, inf)
 	}
 	for _, fii := range i.GetFilteredInformers() {
@@ -131,4 +162,44 @@ func (i *impl) SetupInformers(ctx context.Context, cfg *rest.Config) (context.Co
 
 	}
 	return ctx, informers
+}
+
+// using versionwrapper.CheckMinimumVersion will cause a cycle, thus
+// this method is duplicated
+func checkMinimumVersion(versioner discovery.ServerVersionInterface, version string) error {
+	v, err := versioner.ServerVersion()
+	if err != nil {
+		return err
+	}
+	currentVersion, err := semver.Make(normalizeVersion(v.GitVersion))
+	if err != nil {
+		return err
+	}
+
+	minimumVersion, err := semver.Make(normalizeVersion(version))
+	if err != nil {
+		return err
+	}
+
+	// If no specific pre-release requirement is set, we default to "-0" to always allow
+	// pre-release versions of the same Major.Minor.Patch version.
+	if len(minimumVersion.Pre) == 0 {
+		minimumVersion.Pre = []semver.PRVersion{{VersionNum: 0, IsNum: true}}
+	}
+
+	if currentVersion.LT(minimumVersion) {
+		return fmt.Errorf("kubernetes version %q is not compatible, need at least %q",
+			currentVersion, minimumVersion)
+	}
+	return nil
+}
+
+// using versionwrapper.CheckMinimumVersion will cause a cycle, thus
+// this method is duplicated
+func normalizeVersion(v string) string {
+	if strings.HasPrefix(v, "v") {
+		// No need to account for unicode widths.
+		return v[1:]
+	}
+	return v
 }
