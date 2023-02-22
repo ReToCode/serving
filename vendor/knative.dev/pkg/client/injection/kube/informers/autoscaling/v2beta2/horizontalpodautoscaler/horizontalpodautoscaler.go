@@ -33,6 +33,7 @@ import (
 	controller "knative.dev/pkg/controller"
 	injection "knative.dev/pkg/injection"
 	logging "knative.dev/pkg/logging"
+	"knative.dev/serving/pkg/reconciler/autoscaling/hpakey"
 )
 
 func init() {
@@ -46,6 +47,7 @@ type Key struct{}
 func withInformer(ctx context.Context) (context.Context, controller.Informer) {
 	f := factory.Get(ctx)
 	inf := f.Autoscaling().V2beta2().HorizontalPodAutoscalers()
+	ctx = context.WithValue(ctx, hpakey.IdentifiableKey{}, inf)
 	return context.WithValue(ctx, Key{}, inf), inf.Informer()
 }
 
