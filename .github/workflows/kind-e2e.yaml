@@ -87,16 +87,15 @@ jobs:
       fail-fast: false # Keep running if one leg fails.
       matrix:
         k8s-version:
-#        - v1.25.9
-#        - v1.26.4
+        - v1.25.9
+        - v1.26.4
         - v1.27.1
 
         ingress:
-#        - kourier
-        - kourier-internal-encryption-one-cert
-        - kourier-internal-encryption-sni
-#        - istio
-#        - contour
+        - kourier
+        - kourier-internal-encryption
+        - istio
+        - contour
         # Disabled due to consistent failures
         # - gateway_istio
 
@@ -128,19 +127,15 @@ jobs:
         #   test-flags: -enable-alpha
         #   namespace-resources: httproute
 
-#        - ingress: contour
-#          namespace-resources: httpproxy
-#
-#        - ingress: istio
-#          namespace-resources: virtualservices
+        - ingress: contour
+          namespace-resources: httpproxy
 
-        - ingress: kourier-internal-encryption-one-cert
-          ingress-class: kourier
-          internal-encryption-one-cert: 1
+        - ingress: istio
+          namespace-resources: virtualservices
 
-        - ingress: kourier-internal-encryption-sni
+        - ingress: kourier-internal-encryption
           ingress-class: kourier
-          internal-encryption-sni: 1
+          internal-encryption: 1
 
         - test-suite: runtime
           test-path: ./test/conformance/runtime/...
@@ -154,8 +149,7 @@ jobs:
     env:
       KIND: 1
       INGRESS_CLASS: ${{ matrix.ingress-class || matrix.ingress }}.ingress.networking.knative.dev
-      INTERNAL_ENCRYPTION_ONE_CERT: ${{ matrix.internal-encryption-one-cert || 0 }}
-      INTERNAL_ENCRYPTION_SNI: ${{ matrix.internal-encryption-sni || 0 }}
+      INTERNAL_ENCRYPTION: ${{ matrix.internal-encryption || 0 }}
 
     steps:
     - name: Set up Go 1.19.x

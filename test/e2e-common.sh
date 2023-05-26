@@ -34,8 +34,7 @@ export RUN_HTTP01_AUTO_TLS_TESTS=0
 export HTTPS=0
 export SHORT=0
 export ENABLE_HA=0
-export INTERNAL_ENCRYPTION_ONE_CERT=${INTERNAL_ENCRYPTION_ONE_CERT:-0}
-export INTERNAL_ENCRYPTION_SNI=${INTERNAL_ENCRYPTION_SNI:-0}
+export INTERNAL_ENCRYPTION=${INTERNAL_ENCRYPTION:-0}
 export MESH=0
 export PERF=0
 export KIND=${KIND:-0}
@@ -324,10 +323,6 @@ function install() {
     YTT_FILES+=("${REPO_ROOT_DIR}/test/config/resource-quota/resource-quota.yaml")
   fi
 
-  if (( INTERNAL_ENCRYPTION_ONE_CERT )); then
-    YTT_FILES+=("${REPO_ROOT_DIR}/test/config/internal-encryption/cert-secret.yaml")
-  fi
-
   local ytt_result=$(mktemp)
   local ytt_post_install_result=$(mktemp)
   local ytt_flags=""
@@ -379,24 +374,13 @@ function install() {
     wait_for_leader_controller || return 1
   fi
 
-  if (( INTERNAL_ENCRYPTION_ONE_CERT )) || (( INTERNAL_ENCRYPTION_SNI )); then
+  if (( INTERNAL_ENCRYPTION )); then
     echo "Patch to config-network to enable internal encryption"
     toggle_feature internal-encryption true config-network
 
-    if [[ "$INGRESS_CLASS" == "kourier.ingress.networking.knative.dev" ]]; then
-      if (( INTERNAL_ENCRYPTION_ONE_CERT )); then
-        echo "Point Kourier local gateway to custom server certificates"
-        toggle_feature cluster-cert-secret server-certs config-kourier
-        # This needs to match the name of Secret in test/config/tls/cert-secret.yaml
-        export CA_CERT=ca-cert
-        # This needs to match $san from test/config/tls/generate.sh
-        export SERVER_NAME=knative.dev
-      fi
-      if (( INTERNAL_ENCRYPTION_SNI )); then
-       echo "Setting issuers in net-certmanager"
-       kubectl apply -n ${SYSTEM_NAMESPACE} -f "${REPO_ROOT_DIR}/test/config/internal-encryption/config-certmanager.yaml"
-      fi
-    fi
+    echo "Setting issuers in net-certmanager"
+    kubectl apply -n ${SYSTEM_NAMESPACE} -f "${REPO_ROOT_DIR}/test/config/internal-encryption/config-certmanager.yaml"
+
     echo "Restart activator to mount the certificates"
     kubectl delete pod -n ${SYSTEM_NAMESPACE} -l app=activator
     kubectl wait --timeout=60s --for=condition=Available deployment  -n ${SYSTEM_NAMESPACE} activator
