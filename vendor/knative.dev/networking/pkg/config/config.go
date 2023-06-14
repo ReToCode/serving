@@ -66,9 +66,24 @@ const (
 	// Certificate reconciler.
 	CertManagerCertificateClassName = "cert-manager.certificate.networking.knative.dev"
 
+	// KnativeInternalCertificateClassName value for specifying Knative's internal, self-signed
+	// Certificate reconciler.
+	KnativeInternalCertificateClassName = "knative-internal.certificate.networking.knative.dev"
+
 	// ServingInternalCertName is the name of secret contains certificates in serving
 	// system namespace.
+	//
+	// Deprecated: ServingInternalCertName is deprecated.
+	// (use ServingControlCertName or ServingRoutingCertName instead)
 	ServingInternalCertName = "knative-serving-certs"
+
+	// ServingRoutingCertName is the name of secret contains certificates for Routing data in serving
+	// system namespace. (Used by Ingress GWs and Activator)
+	ServingRoutingCertName = "routing-serving-certs"
+
+	// ServingControlCertName is the name of secret contains certificates for Control data in serving
+	// system namespace. (Used by Autoscaler and Ingress control for example)
+	ServingControlCertName = "control-serving-certs"
 )
 
 // Config Keys
@@ -394,6 +409,10 @@ func NewConfigFromMap(data map[string]string) (*Config, error) {
 	case "", string(TrustDisabled):
 		// If DataplaneTrus is not set in the config-network, default is already
 		// set to TrustDisabled.
+		if nc.InternalEncryption {
+			// Backward compatibility
+			nc.DataplaneTrust = TrustMinimal
+		}
 	case string(TrustMinimal):
 		nc.DataplaneTrust = TrustMinimal
 	case string(TrustEnabled):
