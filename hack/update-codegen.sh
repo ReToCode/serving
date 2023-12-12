@@ -58,17 +58,6 @@ group "Generating checksums for configmap _example keys"
 
 ${REPO_ROOT_DIR}/hack/update-checksums.sh
 
-group "Kubernetes Codegen"
-
-# generate the code with:
-# --output-base    because this script should also be able to run inside the vendor dir of
-#                  k8s.io/kubernetes. The output-base is needed for the generators to output into the vendor dir
-#                  instead of the $GOPATH directly. For normal projects this can be dropped.
-${CODEGEN_PKG}/generate-groups.sh "deepcopy,client,informer,lister" \
-  knative.dev/serving/pkg/client knative.dev/serving/pkg/apis \
-  "serving:v1 serving:v1beta1 autoscaling:v1alpha1" \
-  --go-header-file "${boilerplate}"
-
 group "Knative Codegen"
 
 # Knative Injection
@@ -77,10 +66,33 @@ ${KNATIVE_CODEGEN_PKG}/hack/generate-knative.sh "injection" \
   "serving:v1 serving:v1beta1 autoscaling:v1alpha1" \
   --go-header-file "${boilerplate}"
 
+
+group "Kubernetes Codegen"
+
+go run k8s.io/code-generator/cmd/client-gen \
+  --go-header-file "${boilerplate}" \
+   -i knative.dev/serving/pkg/apis/serving/v1 \
+   -i knative.dev/serving/pkg/apis/serving/v1beta1 \
+   -i knative.dev/serving/pkg/apis/autoscaling/v1 \
+   -i knative.dev/serving/pkg/apis/serving/v1alpha1
+
+go run k8s.io/code-generator/cmd/informer-gen \
+  --go-header-file "${boilerplate}" \
+   -i knative.dev/serving/pkg/apis/serving/v1 \
+   -i knative.dev/serving/pkg/apis/serving/v1beta1 \
+   -i knative.dev/serving/pkg/apis/autoscaling/v1 \
+   -i knative.dev/serving/pkg/apis/serving/v1alpha1
+
+go run k8s.io/code-generator/cmd/lister-gen \
+  --go-header-file "${boilerplate}" \
+   -i knative.dev/serving/pkg/apis/serving/v1 \
+   -i knative.dev/serving/pkg/apis/serving/v1beta1 \
+   -i knative.dev/serving/pkg/apis/autoscaling/v1 \
+   -i knative.dev/serving/pkg/apis/serving/v1alpha1
+
 group "Deepcopy Gen"
 
-# Depends on generate-groups.sh to install bin/deepcopy-gen
-${GOPATH}/bin/deepcopy-gen \
+go run k8s.io/code-generator/cmd/deepcopy-gen \
   -O zz_generated.deepcopy \
   --go-header-file "${boilerplate}" \
   -i knative.dev/serving/pkg/apis/config \
@@ -88,7 +100,11 @@ ${GOPATH}/bin/deepcopy-gen \
   -i knative.dev/serving/pkg/autoscaler/config/autoscalerconfig \
   -i knative.dev/serving/pkg/autoscaler/scaling \
   -i knative.dev/serving/pkg/deployment \
-  -i knative.dev/serving/pkg/gc
+  -i knative.dev/serving/pkg/gc \
+  -i knative.dev/serving/pkg/apis/serving/v1 \
+  -i knative.dev/serving/pkg/apis/serving/v1beta1 \
+  -i knative.dev/serving/pkg/apis/autoscaling/v1 \
+  -i knative.dev/serving/pkg/apis/serving/v1alpha1
 
 group "Generating API reference docs"
 
