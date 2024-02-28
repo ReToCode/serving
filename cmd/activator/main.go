@@ -169,6 +169,7 @@ func main() {
 	if tlsEnabled {
 		logger.Info("Knative system-internal-tls is enabled")
 		certCache, err = certificate.NewCertCache(ctx)
+		defer certCache.Stop()
 		if err != nil {
 			logger.Fatalw("Failed to create certificate cache", zap.Error(err))
 		}

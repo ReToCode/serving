@@ -75,6 +75,10 @@ spec:
         # TODO(https://github.com/knative/pkg/pull/953): Remove stackdriver specific config
         - name: METRICS_DOMAIN
           value: knative.dev/internal/serving
+        - name: SSL_CERT_DIR
+          value: /var/run/ko/knative-ssl-certs
+        - name: SSL_CERT_FILE
+          value: cluster-trust-bundle.pem
 
         securityContext:
           allowPrivilegeEscalation: false
@@ -114,6 +118,11 @@ spec:
           failureThreshold: 12
           initialDelaySeconds: 15
 
+        volumeMounts:
+          - mountPath: "/var/run/ko/knative-ssl-certs"
+            name: knative-trust-bundles
+            readOnly: true
+
       # The activator (often) sits on the dataplane, and may proxy long (e.g.
       # streaming, websockets) requests.  We give a long grace period for the
       # activator to "lame duck" and drain outstanding requests before we
@@ -122,6 +131,18 @@ spec:
       # timeoutSeconds property to avoid servicing events disrupting
       # connections.
       terminationGracePeriodSeconds: 600
+
+      volumes:
+        - name: knative-trust-bundles
+          projected:
+            sources:
+              - clusterTrustBundle:
+                  signerName: "knative.dev/cluster-trust-bundle" # this is required, so we cannot include it in our manifests
+                  labelSelector:
+                    matchLabels:
+                      networking.knative.dev/trust-bundle: "true"
+                  path: cluster-trust-bundle.pem
+                  optional: true
 
 ---
 apiVersion: v1
